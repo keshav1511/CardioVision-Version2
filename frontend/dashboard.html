@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CardioVision</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo-icon" style="background: linear-gradient(135deg, var(--secondary-color), var(--primary-color)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">🫀</span>
+            <span>CardioVision</span>
+        </div>
+        <div>
+            <span id="user-display-name" style="margin-right: 1rem; color: var(--text-muted); font-weight: 500;"></span>
+            <button id="logout-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Logout</button>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <!-- Left Side: Upload Panel -->
+        <div class="glass-panel">
+            <h3><span class="gradient-text">New Analysis</span></h3>
+            <p>Upload a retinal fundus image for cardiovascular risk prediction using EfficientNet-B7.</p>
+            
+            <div id="dashboard-alert" class="alert alert-error"></div>
+            
+            <form id="upload-form">
+                <div class="upload-area" id="drop-zone">
+                    <div class="upload-icon">📸</div>
+                    <h4>Drag & Drop Image</h4>
+                    <p style="margin-bottom: 0;">or click to browse (JPEG, PNG | Max 10MB)</p>
+                    <input type="file" id="file-input-hidden" accept="image/jpeg, image/png, image/jpg" required>
+                </div>
+                
+                <img id="image-preview" src="" alt="Selected Preview">
+                
+                <br>
+                <button type="submit" class="btn btn-primary btn-disabled" id="analyze-btn" disabled>
+                    <span>Analyze Image</span>
+                    <div class="loader" id="analyze-loader" style="margin-left: 10px; width: 20px; height: 20px; border-width: 2px;"></div>
+                </button>
+            </form>
+        </div>
+
+        <!-- Right Side: Results Panel -->
+        <div class="glass-panel results-panel hidden" id="results-panel">
+            <h3><span class="gradient-text">Analysis Results</span></h3>
+            
+            <div class="risk-meter" id="risk-meter-bg">
+                <p style="margin: 0; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 1px;">Cardiovascular Risk</p>
+                <div class="risk-level" id="risk-display">--</div>
+                <p id="confidence-display" style="margin: 0;">Confidence: --%</p>
+            </div>
+            
+            <div>
+                <h4>Grad-CAM Heatmap</h4>
+                <p style="font-size: 0.875rem;">Highlights regions critical for the AI's prediction.</p>
+                <div class="heatmap-container">
+                    <img id="heatmap-image" class="heatmap-img" src="" alt="Grad-CAM Heatmap">
+                </div>
+            </div>
+            
+            <button class="btn btn-secondary" id="download-report-btn" style="margin-top: 1rem;">
+                <span style="font-size: 1.2rem; margin-right: 8px;">📄</span> Download Medical Report (PDF)
+            </button>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

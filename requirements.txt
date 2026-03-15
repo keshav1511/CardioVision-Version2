@@ -1,0 +1,27 @@
+# FastAPI & Server
+fastapi==0.109.0
+uvicorn==0.27.0.post1
+python-multipart==0.0.9
+
+# Database
+motor==3.3.2
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Data Validation & Typing
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# AI & OpenCV (Dependencies for Image Processing & Prediction)
+torch==2.1.2
+torchvision==0.16.2
+pillow==10.2.0
+opencv-python==4.9.0.80
+
+# PDF Generation
+fpdf2==2.7.7
