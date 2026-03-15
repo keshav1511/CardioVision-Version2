@@ -12,9 +12,9 @@ import numpy as np
 # Stub libraries for image proc / report
 import cv2 
 
-from auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
-from models import UserCreate, UserLogin, UserResponse, Token, PredictionResult
-from database import connect_to_mongo, close_mongo_connection, db
+from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
+from backend.models import UserCreate, UserLogin, UserResponse, Token, PredictionResult
+from backend.database import connect_to_mongo, close_mongo_connection, db
 
 from jose import JWTError, jwt
 
