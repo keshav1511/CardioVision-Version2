@@ -5,6 +5,8 @@ __pycache__/
 .idea/
 .vscode/
 
+# Ignore the heavy AI model file
+cardiovision_b7.pth
 
 # Ignore generated heatmaps and reports
 backend/heatmaps/
