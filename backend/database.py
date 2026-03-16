@@ -13,7 +13,7 @@ async def connect_to_mongo():
     global client, db
     print(f"Connecting to MongoDB at {MONGODB_URL}...")
     client = AsyncIOMotorClient(MONGODB_URL)
-    db = client.get_default_database()
+    db = client["cardiovision"]
     print("Connected to MongoDB!")
 
 async def close_mongo_connection():
