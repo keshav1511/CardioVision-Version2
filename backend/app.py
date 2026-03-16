@@ -19,7 +19,11 @@ app = FastAPI(title="CardioVision API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://cardio-vision-version2-n3e8.vercel.app",
+        "http://localhost:3000",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,7 +112,7 @@ async def signup(user: UserCreate):
 
     user_id = str(uuid4())
 
-    user_dict = {
+    user_doc = {
         "id": user_id,
         "name": user.name,
         "email": user.email,
@@ -116,13 +120,13 @@ async def signup(user: UserCreate):
         "created_at": datetime.utcnow()
     }
 
-    await db.users.insert_one(user_dict)
+    await db.users.insert_one(user_doc)
 
-    return {
-        "id": user_id,
-        "name": user.name,
-        "email": user.email
-    }
+    return UserResponse(
+        id=user_id,
+        name=user.name,
+        email=user.email
+    )
 
 
 @app.post("/login", response_model=Token)
