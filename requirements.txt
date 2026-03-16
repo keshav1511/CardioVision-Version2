@@ -19,3 +19,4 @@ torchvision
 pillow
 requests
 gdown
+httpx
