@@ -6,7 +6,7 @@ import requests
 import torch.nn.functional as F
 import torchvision.models as models
 import torchvision.transforms as transforms
-import godown
+import gdown
 
 from PIL import Image
 from datetime import datetime, timedelta
