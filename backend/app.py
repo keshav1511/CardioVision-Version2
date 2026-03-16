@@ -4,9 +4,7 @@ import torch
 import numpy as np
 import requests
 import torch.nn.functional as F
-import torchvision.models as models
 import torchvision.transforms as transforms
-import gdown
 
 from PIL import Image
 from datetime import datetime, timedelta
@@ -58,10 +56,11 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # MODEL CONFIG
 # ---------------------------------------------------------
 
-MODEL_URL = "https://drive.google.com/uc?export=download&id=1tyDhmKrwf2rLyxCX-DaP-kjzp75WRHju"
-MODEL_PATH = os.path.join(BASE_DIR, "cardiovision_b7.pth")
+MODEL_PATH = "cardiovision_b7.pth"
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MODEL_URL = "https://huggingface.co/spaces/keshavnayak15/cardiovision-b7/resolve/main/cardiovision_b7.pth"
+
+device = torch.device("cpu")
 
 model = None
 target_layer = None
@@ -73,16 +72,20 @@ target_layer = None
 
 def download_model():
 
-    if not os.path.exists(MODEL_PATH):
+    if os.path.exists(MODEL_PATH):
+        print("Model already exists")
+        return
 
-        print("Downloading EfficientNet-B7 model...")
+    print("Downloading EfficientNet-B7 model from HuggingFace...")
 
-        response = requests.get(MODEL_URL)
+    r = requests.get(MODEL_URL, stream=True)
 
-        with open(MODEL_PATH, "wb") as f:
-            f.write(response.content)
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
 
-        print("Model downloaded successfully")
+    print("Model downloaded successfully")
 
 
 # ---------------------------------------------------------
@@ -94,24 +97,17 @@ def load_model():
     global model
     global target_layer
 
-    model = models.efficientnet_b7(weights=None)
+    download_model()
 
-    model.classifier[1] = torch.nn.Linear(
-        model.classifier[1].in_features,
-        1
-    )
+    print("Loading model...")
 
-    model.load_state_dict(
-        torch.load(MODEL_PATH, map_location=device)
-    )
-
-    model.to(device)
+    model = torch.load(MODEL_PATH, map_location=device)
 
     model.eval()
 
     target_layer = model.features[-1]
 
-    print("EfficientNet-B7 loaded successfully")
+    print("Model loaded successfully")
 
 
 # ---------------------------------------------------------
@@ -122,8 +118,6 @@ def load_model():
 async def startup():
 
     await connect_to_mongo()
-
-    download_model()
 
     load_model()
 
@@ -157,7 +151,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             raise credentials_exception
 
     except JWTError:
-
         raise credentials_exception
 
     user = await db.users.find_one({"email": email})
@@ -197,13 +190,11 @@ async def signup(user: UserCreate):
     user_id = str(uuid4())
 
     user_doc = {
-
         "id": user_id,
         "name": user.name,
         "email": user.email,
         "hashed_password": hashed,
         "created_at": datetime.utcnow()
-
     }
 
     await db.users.insert_one(user_doc)
@@ -261,12 +252,13 @@ def generate_gradcam(input_tensor):
 
     output = model(input_tensor)
 
+    score = output[:, output.argmax()]
+
     model.zero_grad()
 
-    output.backward()
+    score.backward()
 
     grads = gradients[0]
-
     acts = activations[0]
 
     weights = torch.mean(grads, dim=(2,3), keepdim=True)
@@ -275,9 +267,10 @@ def generate_gradcam(input_tensor):
 
     cam = F.relu(cam)
 
-    cam -= cam.min()
+    cam = cam - cam.min()
 
-    cam /= cam.max()
+    if cam.max() != 0:
+        cam = cam / cam.max()
 
     cam = cam.detach().cpu().numpy()
 
@@ -308,12 +301,17 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
 
     transform = transforms.Compose([
         transforms.Resize((600,600)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485,0.456,0.406],
+            std=[0.229,0.224,0.225]
+        )
     ])
 
     tensor = transform(image_pil).unsqueeze(0).to(device)
 
-    output = model(tensor)
+    with torch.no_grad():
+        output = model(tensor)
 
     risk_score = torch.sigmoid(output).item()
 
@@ -321,8 +319,6 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
 
     confidence = risk_score
 
-
-    # ---------- GradCAM ----------
 
     cam = generate_gradcam(tensor)
 
