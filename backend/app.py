@@ -101,6 +101,8 @@ def health_check():
 @app.post("/signup", response_model=UserResponse)
 async def signup(user: UserCreate):
 
+    db = get_database()
+
     if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
