@@ -121,7 +121,11 @@ async def signup(user: UserCreate):
 
     await db.users.insert_one(user_dict)
 
-    return user_dict
+return {
+    "id": user_id,
+    "name": user.name,
+    "email": user.email
+}
 
 
 @app.post("/login", response_model=Token)
