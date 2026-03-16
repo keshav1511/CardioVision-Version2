@@ -1,29 +1,37 @@
 import os
+import cv2
+import torch
+import numpy as np
+import requests
+import torch.nn.functional as F
+import torchvision.models as models
+import torchvision.transforms as transforms
+
+from PIL import Image
 from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-import numpy as np
-import cv2
+from fastapi.responses import FileResponse
 
 from jose import JWTError, jwt
 
 from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
-from backend.models import UserCreate, UserLogin, UserResponse, Token, PredictionResult
+from backend.models import UserCreate, UserResponse, Token, PredictionResult
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
+
+
+# ---------------------------------------------------------
+# FASTAPI APP
+# ---------------------------------------------------------
 
 app = FastAPI(title="CardioVision API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://cardio-vision-version2-n3e8.vercel.app",
-        "http://localhost:3000",
-        "*"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,95 +39,170 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Directories
-OS_PATH_HEATMAPS = os.path.join(os.path.dirname(__file__), "heatmaps")
-OS_PATH_REPORTS = os.path.join(os.path.dirname(__file__), "reports")
+
+# ---------------------------------------------------------
+# DIRECTORIES
+# ---------------------------------------------------------
+
+BASE_DIR = os.path.dirname(__file__)
+
+OS_PATH_HEATMAPS = os.path.join(BASE_DIR, "heatmaps")
+OS_PATH_REPORTS = os.path.join(BASE_DIR, "reports")
 
 os.makedirs(OS_PATH_HEATMAPS, exist_ok=True)
 os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
-MODEL_HINT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cardiovision_b7.pth")
 
+# ---------------------------------------------------------
+# MODEL CONFIG
+# ---------------------------------------------------------
+
+MODEL_URL = "https://drive.google.com/uc?export=download&id=1tyDhmKrwf2rLyxCX-DaP-kjzp75WRHju"
+MODEL_PATH = os.path.join(BASE_DIR, "cardiovision_b7.pth")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+model = None
+target_layer = None
+
+
+# ---------------------------------------------------------
+# DOWNLOAD MODEL
+# ---------------------------------------------------------
+
+def download_model():
+
+    if not os.path.exists(MODEL_PATH):
+
+        print("Downloading EfficientNet-B7 model...")
+
+        response = requests.get(MODEL_URL)
+
+        with open(MODEL_PATH, "wb") as f:
+            f.write(response.content)
+
+        print("Model downloaded successfully")
+
+
+# ---------------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------------
+
+def load_model():
+
+    global model
+    global target_layer
+
+    model = models.efficientnet_b7(weights=None)
+
+    model.classifier[1] = torch.nn.Linear(
+        model.classifier[1].in_features,
+        1
+    )
+
+    model.load_state_dict(
+        torch.load(MODEL_PATH, map_location=device)
+    )
+
+    model.to(device)
+
+    model.eval()
+
+    target_layer = model.features[-1]
+
+    print("EfficientNet-B7 loaded successfully")
+
+
+# ---------------------------------------------------------
+# STARTUP
+# ---------------------------------------------------------
 
 @app.on_event("startup")
-async def startup_db_client():
+async def startup():
+
     await connect_to_mongo()
-    if not os.path.exists(MODEL_HINT_PATH):
-        print(f"WARNING: Model file not found at {MODEL_HINT_PATH}. Prediction will run in stub mode.")
+
+    download_model()
+
+    load_model()
 
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown():
+
     await close_mongo_connection()
 
 
+# ---------------------------------------------------------
+# AUTH
+# ---------------------------------------------------------
+
 async def get_current_user(token: str = Depends(oauth2_scheme)):
+
     db = get_database()
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
 
     try:
+
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
+
+        email = payload.get("sub")
 
         if email is None:
             raise credentials_exception
 
     except JWTError:
+
         raise credentials_exception
 
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
+    user = await db.users.find_one({"email": email})
 
-    user_doc = await db.users.find_one({"email": email})
-
-    if user_doc is None:
+    if user is None:
         raise credentials_exception
 
-    return user_doc
+    return user
 
+
+# ---------------------------------------------------------
+# ROOT
+# ---------------------------------------------------------
 
 @app.get("/")
-def read_root():
-    return {"message": "Welcome to CardioVision API"}
+def root():
+
+    return {"message": "CardioVision API Running"}
 
 
-@app.get("/health")
-def health_check():
-    db = get_database()
-    return {
-        "status": "ok",
-        "db_connected": db is not None,
-        "model_exists": os.path.exists(MODEL_HINT_PATH)
-    }
-
+# ---------------------------------------------------------
+# SIGNUP
+# ---------------------------------------------------------
 
 @app.post("/signup", response_model=UserResponse)
 async def signup(user: UserCreate):
 
     db = get_database()
 
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
+    existing = await db.users.find_one({"email": user.email})
 
-    existing_user = await db.users.find_one({"email": user.email})
-    if existing_user:
+    if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed_password = get_password_hash(user.password)
+    hashed = get_password_hash(user.password)
 
     user_id = str(uuid4())
 
     user_doc = {
+
         "id": user_id,
         "name": user.name,
         "email": user.email,
-        "hashed_password": hashed_password,
+        "hashed_password": hashed,
         "created_at": datetime.utcnow()
+
     }
 
     await db.users.insert_one(user_doc)
@@ -131,52 +214,86 @@ async def signup(user: UserCreate):
     )
 
 
+# ---------------------------------------------------------
+# LOGIN
+# ---------------------------------------------------------
+
 @app.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
     db = get_database()
 
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
+    user = await db.users.find_one({"email": form_data.username})
 
-    user_doc = await db.users.find_one({"email": form_data.username})
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
 
-    if not user_doc or not verify_password(form_data.password, user_doc["hashed_password"]):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=401,
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(days=7)
-
-    access_token = create_access_token(
-        data={"sub": user_doc["email"]},
-        expires_delta=access_token_expires
+    token = create_access_token(
+        data={"sub": user["email"]},
+        expires_delta=timedelta(days=7)
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer"}
 
+
+# ---------------------------------------------------------
+# GRADCAM
+# ---------------------------------------------------------
+
+def generate_gradcam(input_tensor):
+
+    gradients = []
+    activations = []
+
+    def forward_hook(module, inp, output):
+        activations.append(output)
+
+    def backward_hook(module, grad_in, grad_out):
+        gradients.append(grad_out[0])
+
+    handle_f = target_layer.register_forward_hook(forward_hook)
+    handle_b = target_layer.register_backward_hook(backward_hook)
+
+    output = model(input_tensor)
+
+    model.zero_grad()
+
+    output.backward()
+
+    grads = gradients[0]
+
+    acts = activations[0]
+
+    weights = torch.mean(grads, dim=(2,3), keepdim=True)
+
+    cam = torch.sum(weights * acts, dim=1).squeeze()
+
+    cam = F.relu(cam)
+
+    cam -= cam.min()
+
+    cam /= cam.max()
+
+    cam = cam.detach().cpu().numpy()
+
+    handle_f.remove()
+    handle_b.remove()
+
+    return cam
+
+
+# ---------------------------------------------------------
+# PREDICT
+# ---------------------------------------------------------
 
 @app.post("/predict", response_model=PredictionResult)
-async def predict_risk(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+async def predict(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
 
     db = get_database()
-
-    if file.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file type. Please upload a JPEG or PNG image."
-        )
-
-    file.file.seek(0, os.SEEK_END)
-
-    file_size = file.file.tell()
-
-    if file_size > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-
-    file.file.seek(0)
 
     contents = await file.read()
 
@@ -184,29 +301,48 @@ async def predict_risk(file: UploadFile = File(...), current_user: dict = Depend
 
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    if image is None:
-        raise HTTPException(status_code=400, detail="Could not decode image.")
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    import random
+    image_pil = Image.fromarray(image_rgb)
 
-    risk_score = random.uniform(0.1, 0.99)
+    transform = transforms.Compose([
+        transforms.Resize((600,600)),
+        transforms.ToTensor()
+    ])
+
+    tensor = transform(image_pil).unsqueeze(0).to(device)
+
+    output = model(tensor)
+
+    risk_score = torch.sigmoid(output).item()
 
     prediction_class = "High Risk" if risk_score > 0.6 else "Low Risk"
 
-    confidence = random.uniform(0.8, 0.99)
+    confidence = risk_score
+
+
+    # ---------- GradCAM ----------
+
+    cam = generate_gradcam(tensor)
+
+    cam = cv2.resize(cam, (image.shape[1], image.shape[0]))
+
+    heatmap = np.uint8(255 * cam)
+
+    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+
+    overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
+
 
     heatmap_filename = f"heatmap_{uuid4()}.jpg"
 
     heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
 
-    dummy_heatmap = cv2.applyColorMap(
-        np.uint8(255 * np.random.rand(256, 256)),
-        cv2.COLORMAP_JET
-    )
+    cv2.imwrite(heatmap_path, overlay)
 
-    cv2.imwrite(heatmap_path, dummy_heatmap)
 
-    pred_result = {
+    pred_doc = {
+
         "id": str(uuid4()),
         "user_id": current_user["id"],
         "image_filename": file.filename,
@@ -215,38 +351,44 @@ async def predict_risk(file: UploadFile = File(...), current_user: dict = Depend
         "prediction_class": prediction_class,
         "heatmap_url": f"/heatmaps/{heatmap_filename}",
         "created_at": datetime.utcnow()
+
     }
 
-    await db.predictions.insert_one(pred_result)
+    await db.predictions.insert_one(pred_doc)
 
-    return pred_result
+    return pred_doc
 
+
+# ---------------------------------------------------------
+# HEATMAP
+# ---------------------------------------------------------
 
 @app.get("/heatmaps/{filename}")
-async def get_heatmap(filename: str):
+async def heatmap(filename: str):
 
-    file_path = os.path.join(OS_PATH_HEATMAPS, filename)
+    path = os.path.join(OS_PATH_HEATMAPS, filename)
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Heatmap not found")
+    return FileResponse(path)
 
-    return FileResponse(file_path)
 
+# ---------------------------------------------------------
+# REPORT
+# ---------------------------------------------------------
 
 @app.get("/download-report")
-async def download_report(prediction_id: str, current_user: dict = Depends(get_current_user)):
+async def report(prediction_id: str, current_user: dict = Depends(get_current_user)):
 
     db = get_database()
 
     from fpdf import FPDF
 
-    pred_doc = await db.predictions.find_one({
+    pred = await db.predictions.find_one({
         "id": prediction_id,
         "user_id": current_user["id"]
     })
 
-    if not pred_doc:
-        raise HTTPException(status_code=404, detail="Prediction not found")
+    if not pred:
+        raise HTTPException(status_code=404)
 
     pdf = FPDF()
 
@@ -254,53 +396,27 @@ async def download_report(prediction_id: str, current_user: dict = Depends(get_c
 
     pdf.set_font("Arial", size=16)
 
-    pdf.cell(200, 10, txt="CardioVision AI Medical Report", ln=True, align="C")
+    pdf.cell(200,10,"CardioVision Medical Report", ln=True)
 
     pdf.set_font("Arial", size=12)
 
-    pdf.cell(200, 10, txt=f"Patient ID: {current_user['id']}", ln=True)
-    pdf.cell(200, 10, txt=f"Patient Name: {current_user['name']}", ln=True)
+    pdf.cell(200,10,f"Patient: {current_user['name']}", ln=True)
 
-    pdf.cell(
-        200,
-        10,
-        txt=f"Date: {pred_doc['created_at'].strftime('%Y-%m-%d %H:%M:%S')}",
-        ln=True
-    )
+    pdf.cell(200,10,f"Risk Score: {pred['risk_score']*100:.2f}%", ln=True)
 
-    pdf.ln(10)
-
-    pdf.set_font("Arial", size=14, style="B")
-
-    pdf.cell(200, 10, txt="Diagnosis Result", ln=True)
-
-    pdf.set_font("Arial", size=12)
-
-    pdf.cell(200, 10, txt=f"Risk Score: {pred_doc['risk_score']*100:.2f}%", ln=True)
-    pdf.cell(200, 10, txt=f"Confidence: {pred_doc['confidence']*100:.2f}%", ln=True)
-
-    pdf.cell(200, 10, txt=f"Prediction: {pred_doc['prediction_class']}", ln=True)
-
-    pdf.ln(10)
-
-    pdf.cell(200, 10, txt="Grad-CAM Analysis Image:", ln=True)
+    pdf.cell(200,10,f"Prediction: {pred['prediction_class']}", ln=True)
 
     heatmap_path = os.path.join(
         OS_PATH_HEATMAPS,
-        os.path.basename(pred_doc["heatmap_url"])
+        os.path.basename(pred["heatmap_url"])
     )
 
     if os.path.exists(heatmap_path):
-        pdf.image(heatmap_path, x=10, y=pdf.get_y(), w=100)
 
-    report_filename = f"report_{prediction_id}.pdf"
+        pdf.image(heatmap_path, x=10, y=60, w=120)
 
-    report_path = os.path.join(OS_PATH_REPORTS, report_filename)
+    report_file = os.path.join(OS_PATH_REPORTS, f"{prediction_id}.pdf")
 
-    pdf.output(report_path)
+    pdf.output(report_file)
 
-    return FileResponse(
-        report_path,
-        filename="CardioVision_Report.pdf",
-        media_type="application/pdf"
-    )
+    return FileResponse(report_file, filename="CardioVision_Report.pdf")
