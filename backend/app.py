@@ -5,6 +5,7 @@ import numpy as np
 import requests
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+import torchvision.models as models
 
 from PIL import Image
 from datetime import datetime, timedelta
@@ -101,10 +102,22 @@ def load_model():
 
     print("Loading model...")
 
-    model = torch.load(MODEL_PATH, map_location=device)
+    # Create EfficientNet-B7 architecture
+    model = models.efficientnet_b7(pretrained=False)
+
+    # Change final layer for binary classification
+    model.classifier[1] = torch.nn.Linear(model.classifier[1].in_features, 1)
+
+    # Load trained weights
+    state_dict = torch.load(MODEL_PATH, map_location=device)
+
+    model.load_state_dict(state_dict)
+
+    model.to(device)
 
     model.eval()
 
+    # GradCAM target layer
     target_layer = model.features[-1]
 
     print("Model loaded successfully")
