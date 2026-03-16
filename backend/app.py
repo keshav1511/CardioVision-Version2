@@ -181,19 +181,28 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 def query_huggingface(image_bytes):
 
-    response = requests.post(
-        HF_API_URL,
-        headers=headers,
-        data=image_bytes
-    )
-
-    if response.status_code != 200:
-        raise HTTPException(
-            status_code=500,
-            detail=f"HuggingFace inference failed: {response.text}"
+    try:
+        response = requests.post(
+            HF_API_URL,
+            headers=headers,
+            data=image_bytes,
+            timeout=60
         )
 
-    return response.json()
+        if response.status_code != 200:
+            print("HF ERROR:", response.text)
+            raise HTTPException(
+                status_code=500,
+                detail=f"HuggingFace inference failed: {response.text}"
+            )
+
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"HuggingFace request error: {str(e)}"
+        )
 
 
 # ---------------------------------------------------------
