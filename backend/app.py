@@ -77,7 +77,7 @@ def download_model():
         print("Model already exists")
         return
 
-    print("Downloading EfficientNet-B7 model from HuggingFace...")
+    print("Downloading EfficientNet-B7 model...")
 
     r = requests.get(MODEL_URL, stream=True)
 
@@ -102,13 +102,12 @@ def load_model():
 
     print("Loading model...")
 
-    # Create EfficientNet-B7 architecture
-    model = models.efficientnet_b7(pretrained=False)
+    model = models.efficientnet_b7(weights=None)
 
-    # Change final layer for binary classification
-    model.classifier[1] = torch.nn.Linear(model.classifier[1].in_features, 1)
+    model.classifier[1] = torch.nn.Linear(
+        model.classifier[1].in_features, 1
+    )
 
-    # Load trained weights
     state_dict = torch.load(MODEL_PATH, map_location=device)
 
     model.load_state_dict(state_dict)
@@ -117,7 +116,6 @@ def load_model():
 
     model.eval()
 
-    # GradCAM target layer
     target_layer = model.features[-1]
 
     print("Model loaded successfully")
@@ -254,41 +252,43 @@ def generate_gradcam(input_tensor):
     gradients = []
     activations = []
 
-    def forward_hook(module, inp, output):
+    def forward_hook(module, input, output):
         activations.append(output)
 
-    def backward_hook(module, grad_in, grad_out):
-        gradients.append(grad_out[0])
+    def backward_hook(module, grad_input, grad_output):
+        gradients.append(grad_output[0])
 
-    handle_f = target_layer.register_forward_hook(forward_hook)
-    handle_b = target_layer.register_full_backward_hook(backward_hook)
+    handle_forward = target_layer.register_forward_hook(forward_hook)
+    handle_backward = target_layer.register_full_backward_hook(backward_hook)
 
     output = model(input_tensor)
 
-    score = output[:, output.argmax()]
+    score = torch.sigmoid(output)
 
     model.zero_grad()
 
-    score.backward()
+    score.backward(torch.ones_like(score))
 
     grads = gradients[0]
     acts = activations[0]
 
-    weights = torch.mean(grads, dim=(2,3), keepdim=True)
+    weights = torch.mean(grads, dim=(2, 3), keepdim=True)
 
-    cam = torch.sum(weights * acts, dim=1).squeeze()
+    cam = torch.sum(weights * acts, dim=1)
 
     cam = F.relu(cam)
+
+    cam = cam.squeeze()
+
+    cam = cam.detach().cpu().numpy()
 
     cam = cam - cam.min()
 
     if cam.max() != 0:
         cam = cam / cam.max()
 
-    cam = cam.detach().cpu().numpy()
-
-    handle_f.remove()
-    handle_b.remove()
+    handle_forward.remove()
+    handle_backward.remove()
 
     return cam
 
@@ -313,7 +313,7 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
     image_pil = Image.fromarray(image_rgb)
 
     transform = transforms.Compose([
-        transforms.Resize((600,600)),
+        transforms.Resize((224,224)),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485,0.456,0.406],
@@ -334,13 +334,23 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
 
     cam = generate_gradcam(tensor)
 
-    cam = cv2.resize(cam, (image.shape[1], image.shape[0]))
+    cam = cv2.resize(
+        cam,
+        (image.shape[1], image.shape[0]),
+        interpolation=cv2.INTER_CUBIC
+    )
+
+    cam = cv2.GaussianBlur(cam, (31, 31), 0)
+
+    cam = cam - cam.min()
+
+    cam = cam / (cam.max() + 1e-8)
 
     heatmap = np.uint8(255 * cam)
 
     heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
-    overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
+    overlay = cv2.addWeighted(image, 0.65, heatmap, 0.35, 0)
 
 
     heatmap_filename = f"heatmap_{uuid4()}.jpg"

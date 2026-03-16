@@ -25,7 +25,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-image: 
+  background-image:
     radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.15) 0%, transparent 50%),
     radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.15) 0%, transparent 50%);
   background-attachment: fixed;
@@ -50,7 +50,9 @@ body {
 }
 
 /* Typography */
-h1, h2, h3 {
+h1,
+h2,
+h3 {
   font-weight: 700;
   letter-spacing: -0.025em;
   margin-bottom: 1rem;
@@ -159,7 +161,8 @@ p {
   overflow: hidden;
 }
 
-.upload-area:hover, .upload-area.dragover {
+.upload-area:hover,
+.upload-area.dragover {
   border-color: var(--primary-color);
   background: rgba(79, 70, 229, 0.05);
 }
@@ -180,7 +183,7 @@ p {
   border-radius: 12px;
   display: none;
   margin: 1rem auto;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Layout Classes */
@@ -260,7 +263,7 @@ p {
 .risk-meter {
   padding: 1.5rem;
   border-radius: 16px;
-  background: rgba(0,0,0,0.2);
+  background: rgba(0, 0, 0, 0.2);
   text-align: center;
   border: 1px solid var(--border-color);
 }
@@ -271,9 +274,17 @@ p {
   margin: 0.5rem 0;
 }
 
-.risk-high { color: var(--danger-color); }
-.risk-low { color: var(--success-color); }
-.risk-medium { color: var(--warning-color); }
+.risk-high {
+  color: var(--danger-color);
+}
+
+.risk-low {
+  color: var(--success-color);
+}
+
+.risk-medium {
+  color: var(--warning-color);
+}
 
 .heatmap-container {
   position: relative;
@@ -300,11 +311,13 @@ p {
   font-size: 0.875rem;
   display: none;
 }
+
 .alert-error {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid var(--danger-color);
   color: #fca5a5;
 }
+
 .alert-success {
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid var(--success-color);
@@ -312,7 +325,7 @@ p {
 }
 
 .loader {
-  border: 4px solid rgba(255,255,255,0.1);
+  border: 4px solid rgba(255, 255, 255, 0.1);
   border-left-color: var(--primary-color);
   border-radius: 50%;
   width: 30px;
@@ -323,8 +336,13 @@ p {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .hidden {
