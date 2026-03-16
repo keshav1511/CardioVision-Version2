@@ -261,7 +261,7 @@ def generate_gradcam(input_tensor):
         gradients.append(grad_out[0])
 
     handle_f = target_layer.register_forward_hook(forward_hook)
-    handle_b = target_layer.register_backward_hook(backward_hook)
+    handle_b = target_layer.register_full_backward_hook(backward_hook)
 
     output = model(input_tensor)
 
@@ -323,8 +323,7 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
 
     tensor = transform(image_pil).unsqueeze(0).to(device)
 
-    with torch.no_grad():
-        output = model(tensor)
+    output = model(tensor)
 
     risk_score = torch.sigmoid(output).item()
 
