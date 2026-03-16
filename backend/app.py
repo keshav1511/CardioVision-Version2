@@ -97,13 +97,10 @@ def health_check():
 @app.post("/signup", response_model=UserResponse)
 async def signup(user: UserCreate):
 
-    db = get_database()
-
     if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
     existing_user = await db.users.find_one({"email": user.email})
-
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -121,11 +118,11 @@ async def signup(user: UserCreate):
 
     await db.users.insert_one(user_dict)
 
-return {
-    "id": user_id,
-    "name": user.name,
-    "email": user.email
-}
+    return {
+        "id": user_id,
+        "name": user.name,
+        "email": user.email
+    }
 
 
 @app.post("/login", response_model=Token)
