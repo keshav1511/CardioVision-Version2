@@ -52,7 +52,7 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE API CONFIG
 # ---------------------------------------------------------
 
-HF_API_URL = "https://api-inference.huggingface.co/models/keshavnayak15/cardiovision-b7"
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/keshavnayak15/cardiovision-b7"
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 
 headers = {
