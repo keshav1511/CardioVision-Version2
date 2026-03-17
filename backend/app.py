@@ -3,6 +3,7 @@ import requests
 import base64
 from datetime import datetime, timedelta
 from uuid import uuid4
+from gradio_client import Client
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -50,7 +51,7 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE CONFIG
 # ---------------------------------------------------------
 
-HF_API_URL = "https://keshavnayak15-cardiovision-b7-v2.hf.space/run/predict"
+HF_API_URL = "https://keshavnayak15-cardiovision-b7-v2.hf.space/api/predict"
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 
 headers = {
@@ -58,34 +59,26 @@ headers = {
 }
 
 
+from gradio_client import Client
+import base64
+
+client = Client("keshavnayak15/cardiovision-b7-v2")
+
 def query_huggingface(image_bytes):
-
     try:
-        # 🔥 Convert image → base64
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        # Convert to temp file
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+            f.write(image_bytes)
+            temp_path = f.name
 
-        payload = {
-            "data": [
-                "data:image/jpeg;base64," + image_base64
-            ]
-        }
-
-        response = requests.post(
-            HF_API_URL,
-            json=payload,
-            timeout=60
+        result = client.predict(
+            temp_path,
+            api_name="/predict"
         )
 
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail=f"HuggingFace error: {response.text}"
-            )
-
-        result = response.json()
-
-        # 🔥 Extract Gradio response
-        output = result["data"][0]
+        # result = [ {score, heatmap} ]
+        output = result[0]
 
         return {
             "score": output["score"],
