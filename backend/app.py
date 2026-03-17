@@ -58,12 +58,21 @@ client = Client("keshavnayak15/cardiovision-b7-v2")
 
 def query_huggingface(image_bytes):
     try:
+        # Save to a temp file instead of passing PIL Image directly
+        import tempfile
+        
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            image.save(tmp.name)
+            tmp_path = tmp.name
 
         result = client.predict(
-            image,
+            tmp_path,          # ← pass file path, not PIL Image
             api_name="/predict"
         )
+
+        os.unlink(tmp_path)   # clean up temp file
 
         if isinstance(result, list):
             output = result[0]
