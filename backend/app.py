@@ -207,8 +207,8 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
     result = query_huggingface(contents)
 
     try:
-        risk_score = result[0]["score"]
-        heatmap_base64 = result[0]["heatmap"]
+        risk_score = result["score"]
+        heatmap_base64 = result["heatmap"]
     except:
         raise HTTPException(status_code=500, detail="Invalid HF response")
 
