@@ -50,7 +50,7 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE CONFIG
 # ---------------------------------------------------------
 
-HF_API_URL = "https://router.huggingface.co/hf-inference/models/keshavnayak15/cardiovision-b7-v2"
+HF_API_URL = "https://keshavnayak15-cardiovision-b7-v2.hf.space/run/predict"
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 
 headers = {
@@ -59,27 +59,43 @@ headers = {
 
 
 def query_huggingface(image_bytes):
+
     try:
+        # 🔥 Convert image → base64
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        payload = {
+            "data": [
+                "data:image/jpeg;base64," + image_base64
+            ]
+        }
+
         response = requests.post(
             HF_API_URL,
-            headers=headers,
-            data=image_bytes,
+            json=payload,
             timeout=60
         )
 
         if response.status_code != 200:
-            print("HF ERROR:", response.text)
             raise HTTPException(
                 status_code=500,
-                detail=f"HuggingFace inference failed: {response.text}"
+                detail=f"HuggingFace error: {response.text}"
             )
 
-        return response.json()
+        result = response.json()
 
-    except requests.exceptions.RequestException as e:
+        # 🔥 Extract Gradio response
+        output = result["data"][0]
+
+        return {
+            "score": output["score"],
+            "heatmap": output["heatmap"]
+        }
+
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"HuggingFace request error: {str(e)}"
+            detail=f"HF request failed: {str(e)}"
         )
 
 
