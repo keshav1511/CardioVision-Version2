@@ -58,16 +58,20 @@ client = Client("keshavnayak15/cardiovision-b7-v2")
 
 def query_huggingface(image_bytes):
     try:
-        # ✅ Convert bytes → PIL Image
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        import tempfile
 
-        # ✅ Send to HuggingFace Space
+        # ✅ Save bytes to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+            f.write(image_bytes)
+            temp_path = f.name
+
+        # ✅ Send file path (Gradio expects file input)
         result = client.predict(
-            image,
+            temp_path,
             api_name="/predict"
         )
 
-        # ✅ Handle both list/dict responses
+        # ✅ Handle output safely
         if isinstance(result, list):
             output = result[0]
         else:
