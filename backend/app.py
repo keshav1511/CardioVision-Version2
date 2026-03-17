@@ -1,9 +1,11 @@
 import os
-import requests
 import base64
+import io
 from datetime import datetime, timedelta
 from uuid import uuid4
+
 from gradio_client import Client
+from PIL import Image
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -48,37 +50,28 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
 
 # ---------------------------------------------------------
-# HUGGINGFACE CONFIG
+# HUGGINGFACE (GRADIO CLIENT)
 # ---------------------------------------------------------
-
-HF_API_URL = "https://keshavnayak15-cardiovision-b7-v2.hf.space/api/predict"
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-
-headers = {
-    "Authorization": f"Bearer {HF_API_TOKEN}"
-}
-
-
-from gradio_client import Client
-import base64
 
 client = Client("keshavnayak15/cardiovision-b7-v2")
 
+
 def query_huggingface(image_bytes):
     try:
-        # Convert to temp file
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-            f.write(image_bytes)
-            temp_path = f.name
+        # ✅ Convert bytes → PIL Image
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
+        # ✅ Send to HuggingFace Space
         result = client.predict(
-            temp_path,
+            image,
             api_name="/predict"
         )
 
-        # result = [ {score, heatmap} ]
-        output = result[0]
+        # ✅ Handle both list/dict responses
+        if isinstance(result, list):
+            output = result[0]
+        else:
+            output = result
 
         return {
             "score": output["score"],
