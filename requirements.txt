@@ -20,3 +20,4 @@ pillow
 requests
 gdown
 httpx
+gradio_client
