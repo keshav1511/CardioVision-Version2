@@ -17,6 +17,8 @@ from backend.auth import verify_password, get_password_hash, create_access_token
 from backend.models import UserCreate, UserResponse, Token, PredictionResult
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
 
+from backend.gradcam import generate_gradcam, predict
+
 
 # ---------------------------------------------------------
 # FASTAPI APP
@@ -51,13 +53,6 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # ---------------------------------------------------------
 # HUGGINGFACE API CONFIG
 # ---------------------------------------------------------
-
-HF_API_URL = "https://router.huggingface.co/hf-inference/models/keshavnayak15/cardiovision-b7-v2"
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-
-headers = {
-    "Authorization": f"Bearer {HF_API_TOKEN}"
-}
 
 
 # ---------------------------------------------------------
@@ -179,75 +174,46 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # HUGGINGFACE INFERENCE
 # ---------------------------------------------------------
 
-def query_huggingface(image_bytes):
-
-    try:
-        response = requests.post(
-            HF_API_URL,
-            headers=headers,
-            data=image_bytes,
-            timeout=60
-        )
-
-        if response.status_code != 200:
-            print("HF ERROR:", response.text)
-            raise HTTPException(
-                status_code=500,
-                detail=f"HuggingFace inference failed: {response.text}"
-            )
-
-        return response.json()
-
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"HuggingFace request error: {str(e)}"
-        )
-
 
 # ---------------------------------------------------------
 # PREDICT
 # ---------------------------------------------------------
 
 @app.post("/predict", response_model=PredictionResult)
-async def predict(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+async def predict_api(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
 
     db = get_database()
 
     contents = await file.read()
 
-    result = query_huggingface(contents)
-
-    # Example HF response handling
-    try:
-        risk_score = result[0]["score"]
-    except:
-        risk_score = 0.5
+    # 🔽 SAME MODEL used for prediction
+    risk_score = predict(contents)
 
     prediction_class = "High Risk" if risk_score > 0.6 else "Low Risk"
-
     confidence = risk_score
 
-    heatmap_filename = None
+    # 🔽 Generate heatmap
+    heatmap_filename = f"{uuid4()}.jpg"
+    heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
+
+    generate_gradcam(contents, heatmap_path)
+
+    heatmap_url = f"/heatmaps/{heatmap_filename}"
 
     pred_doc = {
-
         "id": str(uuid4()),
         "user_id": current_user["id"],
         "image_filename": file.filename,
         "risk_score": risk_score,
         "confidence": confidence,
         "prediction_class": prediction_class,
-        "heatmap_url": "",
+        "heatmap_url": heatmap_url,
         "created_at": datetime.utcnow()
-
     }
 
     await db.predictions.insert_one(pred_doc)
 
     return pred_doc
-
-
 # ---------------------------------------------------------
 # HEATMAP
 # ---------------------------------------------------------
