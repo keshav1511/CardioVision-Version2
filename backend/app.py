@@ -1,8 +1,6 @@
 import os
-import cv2
-import numpy as np
 import requests
-from PIL import Image
+import base64
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -16,8 +14,6 @@ from jose import JWTError, jwt
 from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
 from backend.models import UserCreate, UserResponse, Token, PredictionResult
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
-
-from backend.gradcam import generate_gradcam, predict
 
 
 # ---------------------------------------------------------
@@ -51,12 +47,44 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
 
 # ---------------------------------------------------------
-# HUGGINGFACE API CONFIG
+# HUGGINGFACE CONFIG
 # ---------------------------------------------------------
+
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/keshavnayak15/cardiovision-b7-v2"
+HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+
+headers = {
+    "Authorization": f"Bearer {HF_API_TOKEN}"
+}
+
+
+def query_huggingface(image_bytes):
+    try:
+        response = requests.post(
+            HF_API_URL,
+            headers=headers,
+            data=image_bytes,
+            timeout=60
+        )
+
+        if response.status_code != 200:
+            print("HF ERROR:", response.text)
+            raise HTTPException(
+                status_code=500,
+                detail=f"HuggingFace inference failed: {response.text}"
+            )
+
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"HuggingFace request error: {str(e)}"
+        )
 
 
 # ---------------------------------------------------------
-# STARTUP
+# STARTUP / SHUTDOWN
 # ---------------------------------------------------------
 
 @app.on_event("startup")
@@ -74,7 +102,6 @@ async def shutdown():
 # ---------------------------------------------------------
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-
     db = get_database()
 
     credentials_exception = HTTPException(
@@ -115,7 +142,6 @@ def root():
 
 @app.post("/signup", response_model=UserResponse)
 async def signup(user: UserCreate):
-
     db = get_database()
 
     existing = await db.users.find_one({"email": user.email})
@@ -150,13 +176,11 @@ async def signup(user: UserCreate):
 
 @app.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-
     db = get_database()
 
     user = await db.users.find_one({"email": form_data.username})
 
     if not user or not verify_password(form_data.password, user["hashed_password"]):
-
         raise HTTPException(
             status_code=401,
             detail="Incorrect email or password",
@@ -171,32 +195,31 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 # ---------------------------------------------------------
-# HUGGINGFACE INFERENCE
-# ---------------------------------------------------------
-
-
-# ---------------------------------------------------------
 # PREDICT
 # ---------------------------------------------------------
 
 @app.post("/predict", response_model=PredictionResult)
-async def predict_api(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-
+async def predict(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     db = get_database()
 
     contents = await file.read()
 
-    # 🔽 SAME MODEL used for prediction
-    risk_score = predict(contents)
+    result = query_huggingface(contents)
+
+    try:
+        risk_score = result[0]["score"]
+        heatmap_base64 = result[0]["heatmap"]
+    except:
+        raise HTTPException(status_code=500, detail="Invalid HF response")
 
     prediction_class = "High Risk" if risk_score > 0.6 else "Low Risk"
-    confidence = risk_score
 
-    # 🔽 Generate heatmap
+    # Save heatmap locally
     heatmap_filename = f"{uuid4()}.jpg"
     heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
 
-    generate_gradcam(contents, heatmap_path)
+    with open(heatmap_path, "wb") as f:
+        f.write(base64.b64decode(heatmap_base64))
 
     heatmap_url = f"/heatmaps/{heatmap_filename}"
 
@@ -205,7 +228,7 @@ async def predict_api(file: UploadFile = File(...), current_user: dict = Depends
         "user_id": current_user["id"],
         "image_filename": file.filename,
         "risk_score": risk_score,
-        "confidence": confidence,
+        "confidence": risk_score,
         "prediction_class": prediction_class,
         "heatmap_url": heatmap_url,
         "created_at": datetime.utcnow()
@@ -214,14 +237,18 @@ async def predict_api(file: UploadFile = File(...), current_user: dict = Depends
     await db.predictions.insert_one(pred_doc)
 
     return pred_doc
+
+
 # ---------------------------------------------------------
 # HEATMAP
 # ---------------------------------------------------------
 
 @app.get("/heatmaps/{filename}")
 async def heatmap(filename: str):
-
     path = os.path.join(OS_PATH_HEATMAPS, filename)
+
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Heatmap not found")
 
     return FileResponse(path)
 
@@ -232,7 +259,6 @@ async def heatmap(filename: str):
 
 @app.get("/download-report")
 async def report(prediction_id: str, current_user: dict = Depends(get_current_user)):
-
     db = get_database()
 
     from fpdf import FPDF
@@ -246,19 +272,17 @@ async def report(prediction_id: str, current_user: dict = Depends(get_current_us
         raise HTTPException(status_code=404)
 
     pdf = FPDF()
-
     pdf.add_page()
 
     pdf.set_font("Arial", size=16)
-    pdf.cell(200,10,"CardioVision Medical Report", ln=True)
+    pdf.cell(200, 10, "CardioVision Medical Report", ln=True)
 
     pdf.set_font("Arial", size=12)
-    pdf.cell(200,10,f"Patient: {current_user['name']}", ln=True)
-    pdf.cell(200,10,f"Risk Score: {pred['risk_score']*100:.2f}%", ln=True)
-    pdf.cell(200,10,f"Prediction: {pred['prediction_class']}", ln=True)
+    pdf.cell(200, 10, f"Patient: {current_user['name']}", ln=True)
+    pdf.cell(200, 10, f"Risk Score: {pred['risk_score']*100:.2f}%", ln=True)
+    pdf.cell(200, 10, f"Prediction: {pred['prediction_class']}", ln=True)
 
     report_file = os.path.join(OS_PATH_REPORTS, f"{prediction_id}.pdf")
-
     pdf.output(report_file)
 
     return FileResponse(report_file, filename="CardioVision_Report.pdf")
