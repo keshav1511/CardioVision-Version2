@@ -4,7 +4,7 @@ import io
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from gradio_client import Client
+from gradio_client import Client, handle_file
 from PIL import Image
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
@@ -57,10 +57,8 @@ client = Client("keshavnayak15/cardiovision-b7-v2")
 
 
 def query_huggingface(image_bytes):
+    tmp_path = None
     try:
-        # Save to a temp file instead of passing PIL Image directly
-        import tempfile
-        
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
@@ -68,11 +66,9 @@ def query_huggingface(image_bytes):
             tmp_path = tmp.name
 
         result = client.predict(
-            tmp_path,          # ← pass file path, not PIL Image
+            handle_file(tmp_path),   # ← wrap with handle_file()
             api_name="/predict"
         )
-
-        os.unlink(tmp_path)   # clean up temp file
 
         if isinstance(result, list):
             output = result[0]
@@ -85,12 +81,11 @@ def query_huggingface(image_bytes):
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"HF request failed: {str(e)}"
-        )
-
-
+        raise HTTPException(status_code=500, detail=f"HF request failed: {str(e)}")
+    
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 # ---------------------------------------------------------
 # STARTUP / SHUTDOWN
 # ---------------------------------------------------------
