@@ -23,28 +23,22 @@ const checkAuth = () => {
     const token = getToken();
     const isAuthPage = path.endsWith('login.html') || path.endsWith('signup.html');
 
-    // Auto-redirect if token is missing
     if (!token && !isAuthPage && !path.endsWith('/') && !path.endsWith('index.html')) {
         window.location.href = 'login.html';
-    }
-    // Auto-redirect if token exists and on auth page
-    else if (token && isAuthPage) {
+    } else if (token && isAuthPage) {
         window.location.href = 'dashboard.html';
     }
 };
 
-// Initialize app based on route
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 
-    // Setup specific pages
     const path = window.location.pathname;
 
     if (path.endsWith('login.html')) setupLogin();
     else if (path.endsWith('signup.html')) setupSignup();
     else if (path.endsWith('dashboard.html')) setupDashboard();
 
-    // Temporary redirect for root to login
     if (path.endsWith('/') || path.endsWith('index.html')) {
         if (getToken()) window.location.href = 'dashboard.html';
         else window.location.href = 'login.html';
@@ -68,7 +62,7 @@ function setupLogin() {
 
         try {
             const formData = new URLSearchParams();
-            formData.append('username', email); // OAuth2 requires username field
+            formData.append('username', email);
             formData.append('password', password);
 
             const res = await fetch(`${API_URL}/login`, {
@@ -81,7 +75,6 @@ function setupLogin() {
             if (!res.ok) throw new Error(data.detail || 'Login failed');
 
             setToken(data.access_token);
-            // In a real app we might fetch user profile here. We'll store dummy for view.
             saveUser({ email, name: email.split('@')[0] });
             window.location.href = 'dashboard.html';
         } catch (err) {
@@ -117,7 +110,6 @@ function setupSignup() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Registration failed');
 
-            // Auto-login or redirect
             showAlert('signup-alert', 'Account created successfully! Redirecting...', 'success');
             setTimeout(() => { window.location.href = 'login.html'; }, 1500);
         } catch (err) {
@@ -130,7 +122,6 @@ function setupSignup() {
 }
 
 function setupDashboard() {
-    // Top nav logic
     const user = getUser();
     const nameEl = document.getElementById('user-display-name');
     if (nameEl) nameEl.textContent = `Welcome, ${user.name || 'Doctor'}`;
@@ -141,7 +132,6 @@ function setupDashboard() {
         window.location.href = 'login.html';
     });
 
-    // File Upload Logic
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input-hidden');
     const imagePreview = document.getElementById('image-preview');
@@ -178,16 +168,29 @@ function setupDashboard() {
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            imagePreview.src = e.target.result;
-            imagePreview.style.display = 'block';
-            dropZone.style.display = 'none'; // hide drop zone
+        // Layer 1: Check aspect ratio — retinal images are roughly square
+        const img = new window.Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const ratio = img.width / img.height;
+            if (ratio < 0.5 || ratio > 2.0) {
+                showAlert('dashboard-alert', 'Image proportions look unusual. Please upload a retinal fundus image.');
+                return;
+            }
 
-            analyzeBtn.disabled = false;
-            analyzeBtn.classList.remove('btn-disabled');
+            // Passed basic check — show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+                dropZone.style.display = 'none';
+                analyzeBtn.disabled = false;
+                analyzeBtn.classList.remove('btn-disabled');
+            };
+            reader.readAsDataURL(file);
         };
-        reader.readAsDataURL(file);
+        img.src = objectUrl;
     }
 
     // Analyze Form Submission
@@ -226,17 +229,13 @@ function setupDashboard() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Prediction failed');
 
-            // Show Results Panel
             document.getElementById('results-panel').classList.remove('hidden');
 
-            // Update UI
             const riskDisplay = document.getElementById('risk-display');
             const confDisplay = document.getElementById('confidence-display');
             const heatmapImg = document.getElementById('heatmap-image');
 
             riskDisplay.textContent = data.prediction_class;
-
-            // Set styles based on risk
             riskDisplay.className = 'risk-level';
             if (data.prediction_class === 'High Risk') {
                 riskDisplay.classList.add('risk-high');
@@ -244,18 +243,13 @@ function setupDashboard() {
                 riskDisplay.classList.add('risk-low');
             }
 
-            // Show percentages
             const riskScorePc = (data.risk_score * 100).toFixed(1);
             const confPc = (data.confidence * 100).toFixed(1);
-
             confDisplay.textContent = `Confidence: ${confPc}% (Score: ${riskScorePc}%)`;
 
-            // Heatmap
             heatmapImg.src = `${API_URL}${data.heatmap_url}`;
-
             currentPredictionId = data.id;
 
-            // Scroll to results on mobile
             if (window.innerWidth < 992) {
                 document.getElementById('results-panel').scrollIntoView({ behavior: 'smooth' });
             }

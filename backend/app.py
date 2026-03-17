@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from jose import JWTError, jwt
+import anthropic
 
 from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
 from backend.models import UserCreate, UserResponse, Token, PredictionResult
@@ -61,13 +62,13 @@ def query_huggingface(image_bytes):
     tmp_path = None
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        
+
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             image.save(tmp.name)
             tmp_path = tmp.name
 
         result = client.predict(
-            handle_file(tmp_path),   # ← wrap with handle_file()
+            handle_file(tmp_path),
             api_name="/predict"
         )
 
@@ -82,11 +83,58 @@ def query_huggingface(image_bytes):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"HF request failed: {str(e)}")
-    
+        raise HTTPException(
+            status_code=500,
+            detail=f"HF request failed: {str(e)}"
+        )
+
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------
+# ANTHROPIC (RETINAL IMAGE VALIDATION)
+# ---------------------------------------------------------
+
+anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+
+def validate_retinal_image(image_bytes: bytes) -> bool:
+    try:
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        message = anthropic_client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=50,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "Is this a retinal fundus image (an eye scan/photograph of the back of the eye)? Reply with only YES or NO."
+                        }
+                    ],
+                }
+            ],
+        )
+
+        answer = message.content[0].text.strip().upper()
+        return answer == "YES"
+
+    except Exception:
+        return True  # fail open — don't block if Claude is unavailable
+
+
 # ---------------------------------------------------------
 # STARTUP / SHUTDOWN
 # ---------------------------------------------------------
@@ -207,6 +255,13 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
     db = get_database()
 
     contents = await file.read()
+
+    # Validate retinal image using Claude
+    if not validate_retinal_image(contents):
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a valid retinal fundus image."
+        )
 
     result = query_huggingface(contents)
 
