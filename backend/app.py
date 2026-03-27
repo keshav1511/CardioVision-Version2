@@ -55,19 +55,38 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE (GRADIO CLIENT)
 # ---------------------------------------------------------
 
-client = Client("keshavnayak15/cardiovision-b7-v2")
+HF_TOKEN = os.getenv("HF_TOKEN")
+try:
+    client = Client("keshavnayak15/cardiovision-b7-v2", hf_token=HF_TOKEN)
+except Exception as e:
+    print(f"CRITICAL: Failed to initialize Gradio Client: {e}")
+    client = None
+
+
+def get_gradio_client():
+    global client
+    if client is None:
+        try:
+            client = Client("keshavnayak15/cardiovision-b7-v2", hf_token=HF_TOKEN)
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"HuggingFace Space connection failed: {str(e)}"
+            )
+    return client
 
 
 def query_huggingface(image_bytes):
     tmp_path = None
     try:
+        current_client = get_gradio_client()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             image.save(tmp.name)
             tmp_path = tmp.name
 
-        result = client.predict(
+        result = current_client.predict(
             handle_file(tmp_path),
             api_name="/predict"
         )
