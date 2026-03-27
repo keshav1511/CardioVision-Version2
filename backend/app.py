@@ -56,6 +56,7 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # ---------------------------------------------------------
 
 import sys
+import requests
 HF_SPACE_ID = "keshavnayak15/cardiovision-b7-v2"
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN")
 
@@ -66,6 +67,22 @@ else:
     print("DIAGNOSTIC: No HF_TOKEN or HF_API_TOKEN found in environment.")
 
 sys.stdout.flush()
+
+# Check Space reachability manually
+try:
+    print(f"DIAGNOSTIC: Checking reachability of Space {HF_SPACE_ID}...")
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+    # Use the repo-based URL that gradio_client resolves to
+    config_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}/config"
+    resp = requests.get(config_url, headers=headers, timeout=10)
+    print(f"DIAGNOSTIC: Space status check: URL={config_url}, Status={resp.status_code}")
+    if resp.status_code != 200:
+        print(f"DIAGNOSTIC: Response body: {resp.text[:200]}")
+except Exception as e:
+    print(f"DIAGNOSTIC: Space status check FAILED: {e}")
+
+sys.stdout.flush()
+
 
 try:
     print(f"DIAGNOSTIC: Connecting to {HF_SPACE_ID}...")
