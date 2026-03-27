@@ -57,7 +57,7 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 try:
-    client = Client("keshavnayak15/cardiovision-b7-v2", hf_token=HF_TOKEN)
+    client = Client("keshavnayak15/cardiovision-b7-v2", token=HF_TOKEN)
 except Exception as e:
     print(f"CRITICAL: Failed to initialize Gradio Client: {e}")
     client = None
@@ -67,7 +67,7 @@ def get_gradio_client():
     global client
     if client is None:
         try:
-            client = Client("keshavnayak15/cardiovision-b7-v2", hf_token=HF_TOKEN)
+            client = Client("keshavnayak15/cardiovision-b7-v2", token=HF_TOKEN)
         except Exception as e:
             raise HTTPException(
                 status_code=503,
