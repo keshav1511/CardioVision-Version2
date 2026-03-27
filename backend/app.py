@@ -14,6 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from jose import JWTError, jwt
+import sys
+import time
+import requests
 import anthropic
 
 from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
@@ -68,37 +71,7 @@ else:
 
 sys.stdout.flush()
 
-# Check Space reachability manually
-try:
-    print(f"DIAGNOSTIC: Checking reachability of Space {HF_SPACE_ID}...")
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-    # Correct API endpoint to check space info
-    api_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}"
-    resp = requests.get(api_url, headers=headers, timeout=10)
-    print(f"DIAGNOSTIC: Space API check: URL={api_url}, Status={resp.status_code}")
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        print(f"DIAGNOSTIC: Space found. SDK: {data.get('sdk')}, Status: {data.get('runtime', {}).get('stage')}")
-    else:
-        print(f"DIAGNOSTIC: Access denied or Space not found. Response: {resp.text[:200]}")
-except Exception as e:
-    print(f"DIAGNOSTIC: Space API check FAILED: {e}")
-
-sys.stdout.flush()
-
-
-try:
-    print(f"DIAGNOSTIC: Connecting to {HF_SPACE_ID}...")
-    sys.stdout.flush()
-    client = Client(HF_SPACE_ID, token=HF_TOKEN)
-    print("Gradio Client connected successfully!")
-except Exception as e:
-    print(f"CRITICAL: Failed to initialize Gradio Client: {e}")
-    client = None
-
-
-import time
+client = None
 
 def get_gradio_client():
     global client
