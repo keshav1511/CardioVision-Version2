@@ -55,18 +55,21 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE (GRADIO CLIENT)
 # ---------------------------------------------------------
 
+import sys
 HF_SPACE_ID = "keshavnayak15/cardiovision-b7-v2"
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN")
 
 if HF_TOKEN:
-    # Print masked token for verification
     masked_token = HF_TOKEN[:4] + "..." + HF_TOKEN[-4:] if len(HF_TOKEN) > 8 else "****"
-    print(f"Using HF_TOKEN: {masked_token}")
+    print(f"DIAGNOSTIC: Found token in environment: {masked_token}")
 else:
-    print("WARNING: HF_TOKEN environment variable is NOT set.")
+    print("DIAGNOSTIC: No HF_TOKEN or HF_API_TOKEN found in environment.")
+
+sys.stdout.flush()
 
 try:
-    print(f"Connecting to Gradio Client with Space ID: {HF_SPACE_ID}...")
+    print(f"DIAGNOSTIC: Connecting to {HF_SPACE_ID}...")
+    sys.stdout.flush()
     client = Client(HF_SPACE_ID, token=HF_TOKEN)
     print("Gradio Client connected successfully!")
 except Exception as e:
