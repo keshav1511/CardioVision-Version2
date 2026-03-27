@@ -55,9 +55,13 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE (GRADIO CLIENT)
 # ---------------------------------------------------------
 
+HF_SPACE_URL = "https://huggingface.co/spaces/keshavnayak15/cardiovision-b7-v2"
 HF_TOKEN = os.getenv("HF_TOKEN")
+
 try:
-    client = Client("keshavnayak15/cardiovision-b7-v2", token=HF_TOKEN)
+    print(f"Connecting to Gradio Client at {HF_SPACE_URL}...")
+    client = Client(HF_SPACE_URL, token=HF_TOKEN)
+    print("Gradio Client connected successfully!")
 except Exception as e:
     print(f"CRITICAL: Failed to initialize Gradio Client: {e}")
     client = None
@@ -67,8 +71,11 @@ def get_gradio_client():
     global client
     if client is None:
         try:
-            client = Client("keshavnayak15/cardiovision-b7-v2", token=HF_TOKEN)
+            print(f"Attempting to reconnect to Gradio Client at {HF_SPACE_URL}...")
+            client = Client(HF_SPACE_URL, token=HF_TOKEN)
+            print("Gradio Client reconnected successfully!")
         except Exception as e:
+            print(f"Reconnect failed: {e}")
             raise HTTPException(
                 status_code=503,
                 detail=f"HuggingFace Space connection failed: {str(e)}"
@@ -202,7 +209,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 # ROOT
 # ---------------------------------------------------------
 
-@app.get("/")
+@app.get("/", methods=["GET", "HEAD"])
 def root():
     return {"message": "CardioVision API Running"}
 
