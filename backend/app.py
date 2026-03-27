@@ -103,7 +103,7 @@ import time
 def get_gradio_client():
     global client
     if client is None:
-        max_retries = 3
+        max_retries = 5  # Increase retries
         for i in range(max_retries):
             try:
                 # Check status via API first
@@ -114,22 +114,26 @@ def get_gradio_client():
                 if resp.status_code == 200:
                     status = resp.json().get("runtime", {}).get("stage")
                     print(f"DIAGNOSTIC: Space current status: {status}")
+                    
                     if status == "SLEEPING" or status == "PAUSED":
-                        print("DIAGNOSTIC: Space is sleeping/paused. Waking it up...")
-                        # Visiting the space URL often wakes it up
-                        requests.get(f"https://huggingface.co/spaces/{HF_SPACE_ID}", headers=headers, timeout=10)
-                        time.sleep(10) # Give it some time to start booting
-                    elif status == "BUILDING":
-                        print("DIAGNOSTIC: Space is building. Waiting...")
-                        time.sleep(15)
+                        print(f"DIAGNOSTIC: Space is {status}. Sending wakeup signal and waiting 30s...")
+                        # Visiting the space URL wakes it up
+                        requests.get(f"https://huggingface.co/spaces/{HF_SPACE_ID}", headers=headers, timeout=15)
+                        time.sleep(30) # Increased wait time for cold start
+                    elif status == "BUILDING" or status == "RUNNING_BUILDING":
+                        print("DIAGNOSTIC: Space is building. Waiting 20s...")
+                        time.sleep(20)
                 
-                print(f"Attempting to connect to Gradio Client (Attempt {i+1})...")
+                print(f"Attempting to connect to Gradio Client (Attempt {i+1} of {max_retries})...")
+                sys.stdout.flush()
                 client = Client(HF_SPACE_ID, token=HF_TOKEN)
                 print("Gradio Client connected successfully!")
                 return client
             except Exception as e:
                 print(f"Attempt {i+1} failed: {e}")
+                sys.stdout.flush()
                 if i < max_retries - 1:
+                    print(f"Waiting 10s before next attempt...")
                     time.sleep(10)
                 else:
                     raise HTTPException(
