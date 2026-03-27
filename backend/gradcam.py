@@ -10,16 +10,8 @@ import requests
 
 device = torch.device("cpu")
 
-MODEL_PATH = "cardiovision_b7.pth"
-
-# 🔽 Download model from HuggingFace if not exists
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model from HuggingFace...")
-    url = "https://huggingface.co/keshavnayak15/cardiovison-b7/resolve/main/cardiovision_b7.pth"
-    r = requests.get(url)
-    with open(MODEL_PATH, "wb") as f:
-        f.write(r.content)
-    print("Model downloaded!")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, "cardiovision_b7.pth")
 
 # 🔽 Load model
 model = models.efficientnet_b7(weights=None)

@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = 'https://cardiovision-version2.onrender.com';
+const API_URL = 'http://72.62.242.188:3032';
 
 // Utilities
 const showAlert = (alertId, message, type = 'error') => {
