@@ -209,7 +209,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 # ROOT
 # ---------------------------------------------------------
 
-@app.get("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"message": "CardioVision API Running"}
 
