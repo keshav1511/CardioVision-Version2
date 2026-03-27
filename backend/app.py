@@ -55,12 +55,19 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 # HUGGINGFACE (GRADIO CLIENT)
 # ---------------------------------------------------------
 
-HF_SPACE_URL = "https://huggingface.co/spaces/keshavnayak15/cardiovision-b7-v2"
-HF_TOKEN = os.getenv("HF_TOKEN")
+HF_SPACE_ID = "keshavnayak15/cardiovision-b7-v2"
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN")
+
+if HF_TOKEN:
+    # Print masked token for verification
+    masked_token = HF_TOKEN[:4] + "..." + HF_TOKEN[-4:] if len(HF_TOKEN) > 8 else "****"
+    print(f"Using HF_TOKEN: {masked_token}")
+else:
+    print("WARNING: HF_TOKEN environment variable is NOT set.")
 
 try:
-    print(f"Connecting to Gradio Client at {HF_SPACE_URL}...")
-    client = Client(HF_SPACE_URL, token=HF_TOKEN)
+    print(f"Connecting to Gradio Client with Space ID: {HF_SPACE_ID}...")
+    client = Client(HF_SPACE_ID, token=HF_TOKEN)
     print("Gradio Client connected successfully!")
 except Exception as e:
     print(f"CRITICAL: Failed to initialize Gradio Client: {e}")
@@ -71,8 +78,8 @@ def get_gradio_client():
     global client
     if client is None:
         try:
-            print(f"Attempting to reconnect to Gradio Client at {HF_SPACE_URL}...")
-            client = Client(HF_SPACE_URL, token=HF_TOKEN)
+            print(f"Attempting to reconnect to Gradio Client with Space ID: {HF_SPACE_ID}...")
+            client = Client(HF_SPACE_ID, token=HF_TOKEN)
             print("Gradio Client reconnected successfully!")
         except Exception as e:
             print(f"Reconnect failed: {e}")
