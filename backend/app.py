@@ -98,19 +98,44 @@ except Exception as e:
     client = None
 
 
+import time
+
 def get_gradio_client():
     global client
     if client is None:
-        try:
-            print(f"Attempting to reconnect to Gradio Client with Space ID: {HF_SPACE_ID}...")
-            client = Client(HF_SPACE_ID, token=HF_TOKEN)
-            print("Gradio Client reconnected successfully!")
-        except Exception as e:
-            print(f"Reconnect failed: {e}")
-            raise HTTPException(
-                status_code=503,
-                detail=f"HuggingFace Space connection failed: {str(e)}"
-            )
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                # Check status via API first
+                headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+                api_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}"
+                resp = requests.get(api_url, headers=headers, timeout=10)
+                
+                if resp.status_code == 200:
+                    status = resp.json().get("runtime", {}).get("stage")
+                    print(f"DIAGNOSTIC: Space current status: {status}")
+                    if status == "SLEEPING" or status == "PAUSED":
+                        print("DIAGNOSTIC: Space is sleeping/paused. Waking it up...")
+                        # Visiting the space URL often wakes it up
+                        requests.get(f"https://huggingface.co/spaces/{HF_SPACE_ID}", headers=headers, timeout=10)
+                        time.sleep(10) # Give it some time to start booting
+                    elif status == "BUILDING":
+                        print("DIAGNOSTIC: Space is building. Waiting...")
+                        time.sleep(15)
+                
+                print(f"Attempting to connect to Gradio Client (Attempt {i+1})...")
+                client = Client(HF_SPACE_ID, token=HF_TOKEN)
+                print("Gradio Client connected successfully!")
+                return client
+            except Exception as e:
+                print(f"Attempt {i+1} failed: {e}")
+                if i < max_retries - 1:
+                    time.sleep(10)
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"HuggingFace Space connection failed after {max_retries} attempts: {str(e)}"
+                    )
     return client
 
 
