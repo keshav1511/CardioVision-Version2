@@ -72,14 +72,18 @@ sys.stdout.flush()
 try:
     print(f"DIAGNOSTIC: Checking reachability of Space {HF_SPACE_ID}...")
     headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-    # Use the repo-based URL that gradio_client resolves to
-    config_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}/config"
-    resp = requests.get(config_url, headers=headers, timeout=10)
-    print(f"DIAGNOSTIC: Space status check: URL={config_url}, Status={resp.status_code}")
-    if resp.status_code != 200:
-        print(f"DIAGNOSTIC: Response body: {resp.text[:200]}")
+    # Correct API endpoint to check space info
+    api_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}"
+    resp = requests.get(api_url, headers=headers, timeout=10)
+    print(f"DIAGNOSTIC: Space API check: URL={api_url}, Status={resp.status_code}")
+    
+    if resp.status_code == 200:
+        data = resp.json()
+        print(f"DIAGNOSTIC: Space found. SDK: {data.get('sdk')}, Status: {data.get('runtime', {}).get('stage')}")
+    else:
+        print(f"DIAGNOSTIC: Access denied or Space not found. Response: {resp.text[:200]}")
 except Exception as e:
-    print(f"DIAGNOSTIC: Space status check FAILED: {e}")
+    print(f"DIAGNOSTIC: Space API check FAILED: {e}")
 
 sys.stdout.flush()
 
