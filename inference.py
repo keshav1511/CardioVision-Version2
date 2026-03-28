@@ -1,13 +1,13 @@
 import torch
-from efficientnet_pytorch import EfficientNet
+import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
 import io
 
 device = torch.device("cpu")
 
-model = EfficientNet.from_name('efficientnet-b7')
-model._fc = torch.nn.Linear(model._fc.in_features, 1)
+model = models.efficientnet_b7(weights=None)
+model.classifier[1] = torch.nn.Linear(model.classifier[1].in_features, 1)
 
 state_dict = torch.load("cardiovision_b7.pth", map_location=device)
 model.load_state_dict(state_dict)
