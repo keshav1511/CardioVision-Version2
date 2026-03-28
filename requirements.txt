@@ -20,5 +20,5 @@ pillow
 requests
 gdown
 httpx
-gradio_client
 anthropic
+efficientnet_pytorch

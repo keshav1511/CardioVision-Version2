@@ -1,4 +1,4 @@
-const API_URL = '/api';
+const API_URL = 'http://localhost:8000';
 
 // Utilities
 const showAlert = (alertId, message, type = 'error') => {

@@ -54,13 +54,6 @@ os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
 
 # ---------------------------------------------------------
-# LOCAL INFERENCE (GRADCAM)
-# ---------------------------------------------------------
-
-from backend.gradcam import predict as local_predict, generate_gradcam
-
-
-# ---------------------------------------------------------
 # ANTHROPIC (RETINAL IMAGE VALIDATION)
 # ---------------------------------------------------------
 
@@ -230,21 +223,20 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
             detail="Please upload a valid retinal fundus image."
         )
 
+    from backend.gradcam import predict as local_predict, generate_gradcam as local_gradcam
+
     try:
         risk_score = local_predict(contents)
+
+        # Save heatmap locally using the gradcam module
+        heatmap_filename = f"{uuid4()}.jpg"
+        heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
+        local_gradcam(contents, heatmap_path)
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Local backend inference failed: {str(e)}")
 
     prediction_class = "High Risk" if risk_score > 0.6 else "Low Risk"
-
-    # Save heatmap locally
-    heatmap_filename = f"{uuid4()}.jpg"
-    heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
-
-    try:
-        generate_gradcam(contents, heatmap_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"GradCAM generation failed: {str(e)}")
 
     heatmap_url = f"/heatmaps/{heatmap_filename}"
 
