@@ -1,5 +1,4 @@
-// Configuration
-const API_URL = 'http://72.62.242.188:3032';
+const API_URL = '/api';
 
 // Utilities
 const showAlert = (alertId, message, type = 'error') => {
