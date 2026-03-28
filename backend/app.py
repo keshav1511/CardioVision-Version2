@@ -5,7 +5,6 @@ import tempfile
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from gradio_client import Client, handle_file
 from PIL import Image
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
@@ -14,9 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from jose import JWTError, jwt
-import sys
-import time
-import requests
 import anthropic
 
 from backend.auth import verify_password, get_password_hash, create_access_token, ALGORITHM, SECRET_KEY
@@ -54,105 +50,7 @@ os.makedirs(OS_PATH_HEATMAPS, exist_ok=True)
 os.makedirs(OS_PATH_REPORTS, exist_ok=True)
 
 
-# ---------------------------------------------------------
-# HUGGINGFACE (GRADIO CLIENT)
-# ---------------------------------------------------------
-
-import sys
-import requests
-HF_SPACE_ID = "keshavnayak15/cardiovision-b7-v2"
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN")
-
-if HF_TOKEN:
-    masked_token = HF_TOKEN[:4] + "..." + HF_TOKEN[-4:] if len(HF_TOKEN) > 8 else "****"
-    print(f"DIAGNOSTIC: Found token in environment: {masked_token}")
-else:
-    print("DIAGNOSTIC: No HF_TOKEN or HF_API_TOKEN found in environment.")
-
-sys.stdout.flush()
-
-client = None
-
-def get_gradio_client():
-    global client
-    if client is None:
-        max_retries = 5  # Increase retries
-        for i in range(max_retries):
-            try:
-                # Check status via API first
-                headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-                api_url = f"https://huggingface.co/api/spaces/{HF_SPACE_ID}"
-                resp = requests.get(api_url, headers=headers, timeout=10)
-                
-                if resp.status_code == 200:
-                    status = resp.json().get("runtime", {}).get("stage")
-                    print(f"DIAGNOSTIC: Space current status: {status}")
-                    
-                    if status == "SLEEPING" or status == "PAUSED":
-                        print(f"DIAGNOSTIC: Space is {status}. Sending wakeup signal and waiting 30s...")
-                        # Visiting the space URL wakes it up
-                        requests.get(f"https://huggingface.co/spaces/{HF_SPACE_ID}", headers=headers, timeout=15)
-                        time.sleep(30) # Increased wait time for cold start
-                    elif status == "BUILDING" or status == "RUNNING_BUILDING":
-                        print("DIAGNOSTIC: Space is building. Waiting 20s...")
-                        time.sleep(20)
-                
-                print(f"Attempting to connect to Gradio Client (Attempt {i+1} of {max_retries})...")
-                sys.stdout.flush()
-                client = Client(HF_SPACE_ID, token=HF_TOKEN)
-                print("Gradio Client connected successfully!")
-                return client
-            except Exception as e:
-                print(f"Attempt {i+1} failed: {e}")
-                sys.stdout.flush()
-                if i < max_retries - 1:
-                    print(f"Waiting 10s before next attempt...")
-                    time.sleep(10)
-                else:
-                    raise HTTPException(
-                        status_code=503,
-                        detail=f"HuggingFace Space connection failed after {max_retries} attempts: {str(e)}"
-                    )
-    return client
-
-
-def query_huggingface(image_bytes):
-    tmp_path = None
-    try:
-        current_client = get_gradio_client()
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            image.save(tmp.name)
-            tmp_path = tmp.name
-
-        result = current_client.predict(
-            handle_file(tmp_path),
-            api_name="/predict"
-        )
-
-        # Robust parsing for nested lists from Gradio
-        output = result
-        while isinstance(output, list) and len(output) > 0:
-            output = output[0]
-
-        if not isinstance(output, dict) or "score" not in output:
-            raise ValueError(f"Unexpected output format from HF Space: {result}")
-
-        return {
-            "score": output["score"],
-            "heatmap": output["heatmap"]
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"HF request failed: {str(e)}"
-        )
-
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+from backend.gradcam import predict as local_predict, generate_gradcam
 
 
 # ---------------------------------------------------------
@@ -325,22 +223,14 @@ async def predict(file: UploadFile = File(...), current_user: dict = Depends(get
             detail="Please upload a valid retinal fundus image."
         )
 
-    result = query_huggingface(contents)
-
-    try:
-        risk_score = result["score"]
-        heatmap_base64 = result["heatmap"]
-    except:
-        raise HTTPException(status_code=500, detail="Invalid HF response")
-
+    risk_score = local_predict(contents)
     prediction_class = "High Risk" if risk_score > 0.6 else "Low Risk"
 
-    # Save heatmap locally
     heatmap_filename = f"{uuid4()}.jpg"
     heatmap_path = os.path.join(OS_PATH_HEATMAPS, heatmap_filename)
 
-    with open(heatmap_path, "wb") as f:
-        f.write(base64.b64decode(heatmap_base64))
+    # Generate Grad-CAM heatmap locally
+    generate_gradcam(contents, heatmap_path)
 
     heatmap_url = f"/heatmaps/{heatmap_filename}"
 
