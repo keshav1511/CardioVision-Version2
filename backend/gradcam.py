@@ -1,5 +1,5 @@
 import torch
-import torchvision.models as models
+from efficientnet_pytorch import EfficientNet
 import torchvision.transforms as transforms
 import numpy as np
 import cv2
@@ -14,8 +14,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "cardiovision_b7.pth")
 
 # 🔽 Load model
-model = models.efficientnet_b7(weights=None)
-model.classifier[1] = torch.nn.Linear(model.classifier[1].in_features, 1)
+# 🔽 Load model
+model = EfficientNet.from_name('efficientnet-b7')
+model._fc = torch.nn.Linear(model._fc.in_features, 1)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 model.eval()
 
@@ -32,7 +33,7 @@ def backward_hook(module, grad_in, grad_out):
     gradients = grad_out[0]
 
 # 🔽 Attach hooks to LAST conv layer
-target_layer = model.features[-1]
+target_layer = model._conv_head
 target_layer.register_forward_hook(forward_hook)
 target_layer.register_backward_hook(backward_hook)
 
